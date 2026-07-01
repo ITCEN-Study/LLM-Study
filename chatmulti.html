@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <title>AI 챗봇 실습 (다중 모델 연동)</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f6f9;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        .chat-container {
+            width: 480px;
+            height: 650px;
+            background-color: #ffffff;
+            border-radius: 15px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .chat-header {
+            background-color: #007bff;
+            color: #ffffff;
+            padding: 15px;
+            text-align: center;
+            font-size: 16px;
+            font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .reset-btn {
+            background-color: #ff4d4f;
+            border: none;
+            color: white;
+            padding: 6px 12px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .reset-btn:hover {
+            background-color: #ff7875;
+        }
+
+        .model-select-area {
+            background-color: #f8f9fa;
+            padding: 10px 15px;
+            border-bottom: 1px solid #e9ecef;
+            display: flex;
+            align-items: center;
+            font-size: 14px;
+        }
+
+        .model-label {
+            font-weight: bold;
+            margin-right: 10px;
+            color: #495057;
+        }
+
+        .model-dropdown {
+            padding: 6px;
+            border-radius: 5px;
+            border: 1px solid #ced4da;
+            font-size: 14px;
+            outline: none;
+            flex: 1;
+        }
+
+        .chat-messages {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            background-color: #f9fbfd;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .msg-wrapper {
+            margin-bottom: 15px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sender-name {
+            font-size: 11px;
+            color: #6c757d;
+            margin-bottom: 3px;
+            font-weight: bold;
+        }
+
+        .message {
+            max-width: 75%;
+            padding: 10px 15px;
+            border-radius: 15px;
+            font-size: 14px;
+            line-height: 1.5;
+            word-wrap: break-word;
+        }
+
+        .user-wrapper {
+            align-items: flex-end;
+        }
+
+        .user-msg {
+            background-color: #e2f0fd;
+            color: #004085;
+        }
+
+        .ai-wrapper {
+            align-items: flex-start;
+        }
+
+        .ai-msg {
+            background-color: #e2e3e5;
+            color: #383d41;
+        }
+
+        .chat-input-area {
+            display: flex;
+            padding: 15px;
+            border-top: 1px solid #e9ecef;
+            background-color: #ffffff;
+        }
+
+        .chat-input {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ced4da;
+            border-radius: 5px;
+            font-size: 14px;
+            outline: none;
+        }
+
+        .chat-input:focus {
+            border-color: #007bff;
+        }
+
+        .send-btn {
+            background-color: #007bff;
+            border: none;
+            color: white;
+            padding: 0 15px;
+            margin-left: 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .send-btn:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="chat-container">
+        <div class="chat-header">
+            <span>AI 챗봇 실습 (다중 모델)</span>
+            <button class="reset-btn" onclick="resetChat()">대화 리셋</button>
+        </div>
+        <div class="model-select-area">
+            <span class="model-label">AI 모델 선택 :</span>
+            <select class="model-dropdown" id="modelSelect">
+                <option value="gpt">Open AI (gpt-4o-mini)</option>
+                <option value="gemini">Google (gemini-2.5-flash)</option>
+                <option value="ollama">Ollama (exaone3.5)</option>
+            </select>
+        </div>
+        <div class="chat-messages" id="chatMessages">
+            <div class="msg-wrapper ai-wrapper">
+                <span class="sender-name">AI 어시스턴트</span>
+                <div class="message ai-msg">안녕하세요! 원하시는 AI 모델을 선택한 후 질문을 입력하세요. 이전 대화 내용을 기억합니다.</div>
+            </div>
+        </div>
+        <div class="chat-input-area">
+            <input type="text" class="chat-input" id="chatInput" placeholder="메시지를 입력하세요..."
+                onkeydown="handleKey(event)">
+            <button class="send-btn" onclick="sendMessage()">전송</button>
+        </div>
+    </div>
+
+    <script>
+        let sessionId = null;
+
+        function handleKey(event) {
+            if (event.key === 'Enter') {
+                sendMessage();
+            }
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('chatInput');
+            const text = input.value.trim();
+            if (!text) return;
+
+            // 유저 메시지 화면에 추가
+            appendMessage('user', '나', text);
+            input.value = '';
+
+            // 로딩 메시지 추가
+            const modelSelect = document.getElementById('modelSelect');
+            const selectedModelText = modelSelect.options[modelSelect.selectedIndex].text;
+            const loadingWrapper = appendMessage('ai', `AI (${selectedModelText})`, '생각하는 중...');
+
+            try {
+                const modelType = modelSelect.value;
+                let url = `/chat?message=${encodeURIComponent(text)}&model_type=${modelType}`;
+                if (sessionId) {
+                    url += `&session_id=${sessionId}`;
+                }
+
+                const response = await fetch(url);
+                const data = await response.json();
+
+                // 로딩 메시지 제거
+                loadingWrapper.remove();
+
+                if (data.answer) {
+                    appendMessage('ai', `AI (${selectedModelText})`, data.answer);
+                    sessionId = data.session_id; // 서버에서 반환된 세션 ID 저장
+                } else {
+                    appendMessage('ai', `AI (${selectedModelText})`, '답변 호출 중 오류가 발생했습니다.');
+                }
+            } catch (e) {
+                loadingWrapper.remove();
+                appendMessage('ai', `AI`, '서버 통신 중 오류가 발생했습니다.');
+            }
+        }
+
+        function appendMessage(senderType, senderName, text) {
+            const messagesContainer = document.getElementById('chatMessages');
+
+            const wrapper = document.createElement('div');
+            wrapper.className = `msg-wrapper ${senderType === 'user' ? 'user-wrapper' : 'ai-wrapper'}`;
+
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'sender-name';
+            nameSpan.innerText = senderName;
+
+            const msgDiv = document.createElement('div');
+            msgDiv.className = `message ${senderType === 'user' ? 'user-msg' : 'ai-msg'}`;
+            msgDiv.innerText = text;
+
+            wrapper.appendChild(nameSpan);
+            wrapper.appendChild(msgDiv);
+            messagesContainer.appendChild(wrapper);
+
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            return wrapper;
+        }
+
+        function resetChat() {
+            sessionId = null;
+            const messagesContainer = document.getElementById('chatMessages');
+            messagesContainer.innerHTML = `
+                <div class="msg-wrapper ai-wrapper">
+                    <span class="sender-name">AI 어시스턴트</span>
+                    <div class="message ai-msg">대화가 리셋되었습니다. 새로운 대화를 시작합니다!</div>
+                </div>
+            `;
+        }
+    </script>
+</body>
+
+</html>

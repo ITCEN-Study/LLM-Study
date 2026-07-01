@@ -222,6 +222,7 @@ def get_chat_page():
 
 @app.get("/chat")
 def chat(message: str, conv_id: str = None):
+    # 대화방 생성 없는경우
     if not conv_id:
         conversation = client.conversations.create()
         conv_id = conversation.id
